@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
 import environ
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -21,9 +22,9 @@ env = environ.Env()
 
 environ.Env.read_env(BASE_DIR / '.env')
 
-DEBUG = env('DEBUG')
+DEBUG = env.bool('DEBUG')
 
-SECRET_KEY = "secret-key"
+SECRET_KEY = env('SECRET_KEY')
 
 AUTH_USER_MODEL = "user.User"
 
@@ -38,9 +39,27 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'user',
     'food_delivery',    
 ]
+
+REST_FRAMEWORK = {
+  "DEFAULT_AUTHENTICATION_CLASSES": (
+    "rest_framework_simplejwt.authentication.JWTAuthentication",
+  ),
+  "DEFAULT_PERMISSION_CLASSES": (
+    "rest_framework.permissions.IsAuthenticated",
+  ),
+  "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+  "PAGE_SIZE": 20,
+}
+
+SIMPLE_JWT = {
+  "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+  "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+  "AUTH_HEADER_TYPES": ("Bearer",)
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
