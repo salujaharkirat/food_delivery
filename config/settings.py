@@ -23,6 +23,10 @@ environ.Env.read_env(BASE_DIR / '.env')
 
 DEBUG = env('DEBUG')
 
+SECRET_KEY = "secret-key"
+
+AUTH_USER_MODEL = "user.User"
+
 ALLOWED_HOSTS = []
 
 # Application definition
@@ -34,6 +38,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'user',
+    'food_delivery',    
 ]
 
 MIDDLEWARE = [
