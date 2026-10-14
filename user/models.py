@@ -34,6 +34,7 @@ class UserManager(BaseUserManager):
    
 
 class User(AbstractUser):
+  id = models.BigAutoField(primary_key=True)
   username = None
   email = models.EmailField(unique=True, max_length=255)
   role = models.CharField(max_length=20, choices=Role.choices, default=Role.CUSTOMER)
