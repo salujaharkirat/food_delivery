@@ -8,8 +8,8 @@ from user.models import User, Role
 
 
 from .models import Restaurant, Meal
-from .serializers import RestaurantSerializer, MealSerializer, OrderSerializer, OrderOutputSerializer
-from .service import create_order
+from .serializers import RestaurantSerializer, MealSerializer, OrderSerializer, OrderOutputSerializer, OrderStatusSerializer
+from .service import create_order, change_order_status
 
 
 @api_view(['GET'])
@@ -57,6 +57,20 @@ def place_order(request):
   order = create_order(user, serializer.validated_data)
 
   return Response(OrderOutputSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['POST'])
+def update_order_status(request, order_id):
+  user = cast(User, request.user)
+
+  if user.role not in (Role.CUSTOMER, Role.OWNER):
+    return Response({"message": "Only customer and owners can update status"}, status=status.HTTP_403_FORBIDDEN)
+
+  serializer = OrderStatusSerializer(data=request.data)
+  serializer.is_valid(raise_exception=True)
+  order = change_order_status(request.user, order_id, serializer.validated_data["status"]) # type: ignore
+
+  return Response(OrderOutputSerializer(order).data, status=status.HTTP_200_OK)
   
   
 
