@@ -1,14 +1,16 @@
 from rest_framework.decorators import api_view
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework import status
+from django.shortcuts import get_object_or_404
 from typing import cast
 
 from user.models import User, Role
 
 
-from .models import Restaurant, Meal
-from .serializers import RestaurantSerializer, MealSerializer, OrderSerializer, OrderOutputSerializer, OrderStatusSerializer
+from .models import Restaurant, Meal, Order
+from .serializers import RestaurantSerializer, MealSerializer, OrderSerializer, OrderOutputSerializer, OrderStatusSerializer, OrderDetailOutputSerializer
 from .service import create_order, change_order_status
 
 
@@ -45,19 +47,48 @@ def get_meals(request, restaurant_id):
   serializer = MealSerializer(page, many=True)
   return paginator.get_paginated_response(serializer.data)
 
-@api_view(['POST'])
-def place_order(request):
-  user = cast(User, request.user)
+class OrderList(APIView):
+  def get(self, request):
+    user = cast(User, request.user)
 
-  if user.role != Role.CUSTOMER:
-    return Response({"message": "Only customers can place orders"}, status=status.HTTP_403_FORBIDDEN)
+    paginator = PageNumberPagination()
 
-  serializer = OrderSerializer(data=request.data)
-  serializer.is_valid(raise_exception=True)
-  order = create_order(user, serializer.validated_data)
+    if user.role == Role.CUSTOMER:
+      orders = Order.objects.filter(customer=user)
+    elif user.role == Role.OWNER:
+      orders = Order.objects.filter(restaurant__owner=user)
+    else:
+      return Response({"message": "Only customers and owners can view the orders"}, status=status.HTTP_403_FORBIDDEN)
 
-  return Response(OrderOutputSerializer(order).data, status=status.HTTP_201_CREATED)
 
+    page = paginator.paginate_queryset(orders, request)
+    return paginator.get_paginated_response(OrderOutputSerializer(page, many=True).data)
+
+  def post(self, request):
+    user = cast(User, request.user)
+    
+    if user.role != Role.CUSTOMER:
+      return Response({"message": "Only customers can place orders"}, status=status.HTTP_403_FORBIDDEN)
+  
+    serializer = OrderSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    order = create_order(user, serializer.validated_data)
+  
+    return Response(OrderOutputSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+class OrderDetail(APIView):
+  def get(self, request, order_id):
+    user = cast(User, request.user)
+
+    if user.role == Role.CUSTOMER:
+      order = get_object_or_404(Order, id=order_id, customer=user)
+    elif user.role == Role.OWNER:
+      order = get_object_or_404(Order, id=order_id, restaurant__owner=user)
+    else:
+      return Response({"message": "Only customers and owners can view the order"}, status=status.HTTP_403_FORBIDDEN)
+
+    return Response(OrderDetailOutputSerializer(order).data, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 def update_order_status(request, order_id):

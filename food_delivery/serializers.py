@@ -34,12 +34,11 @@ class OrderStatusHistoryOutSerializer(serializers.ModelSerializer):
 
 class OrderOutputSerializer(serializers.ModelSerializer):
   items = OrderItemOutputSerializer(many=True, read_only=True)
-  status_history = OrderStatusHistoryOutSerializer(many=True, read_only=True)
-  
+
   class Meta:
     model = Order
     fields = ('id', 'status', 'restaurant_id', 'coupon_id', 'subtotal', 'discount_amount',
-              'tip_amount', 'total_amount', 'created_at', 'items', 'status_history')
+              'tip_amount', 'total_amount', 'created_at', 'items', 'status')
     read_only_fields = fields
 
 class OrderSerializer(serializers.Serializer):
@@ -48,4 +47,10 @@ class OrderSerializer(serializers.Serializer):
   tip_amount = serializers.DecimalField(required=False, max_digits=6, decimal_places=2, default=0, min_value=0)
   coupon_code = serializers.CharField(required=False)
 
+class OrderDetailOutputSerializer(OrderOutputSerializer):
+  status_history = OrderStatusHistoryOutSerializer(many=True, read_only=True)
+
+  class Meta(OrderOutputSerializer.Meta):
+    fields = OrderOutputSerializer.Meta.fields + ('status_history',)
+    read_only_fields = fields
 
