@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from decimal import Decimal
 
 from .models import Restaurant, Meal, OrderItem, Order, OrderStatusHistory, OrderStatus
 
@@ -7,6 +8,18 @@ class MealSerializer(serializers.ModelSerializer):
     model = Meal
     fields = ('id', 'description', 'price', 'name')
     read_only_fields = fields
+
+
+class OwnerMealSerializer(MealSerializer):
+  class Meta(MealSerializer.Meta):
+    fields = MealSerializer.Meta.fields + ('is_blocked',)
+    read_only_fields = fields
+
+class MealInputSerializer(serializers.ModelSerializer):
+  class Meta:
+    model = Meal
+    fields = ('name', 'description', 'price')
+    extra_kwargs = {'price': {'min_value': Decimal('0.01')}}
 
 
 class RestaurantSerializer(serializers.ModelSerializer):

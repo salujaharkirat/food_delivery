@@ -9,10 +9,10 @@ from typing import cast
 from user.models import User, Role
 
 
-from .models import Restaurant, Order
+from .models import Restaurant, Order, Meal
 from .serializers import RestaurantSerializer, OrderSerializer, OrderOutputSerializer, \
 OrderStatusSerializer, OrderDetailOutputSerializer, RestaurantInputSerializer, \
-OwnerRestaurantSerializer
+OwnerRestaurantSerializer, OwnerMealSerializer, MealInputSerializer, MealSerializer
 from .service import create_order, change_order_status
 
 class OrderList(APIView):
@@ -144,6 +144,44 @@ class RestaurantDetail(APIView):
     restaurant.save(update_fields=["is_active"])
 
     return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
+
+class MealList(APIView):
+  def get(self, request, restaurant_id):
+    user = cast(User, request.user)
+
+    paginator = PageNumberPagination()
+
+    if user.role == Role.CUSTOMER:
+      get_object_or_404(Restaurant, id=restaurant_id, is_active=True, is_blocked=False)
+      meals = Meal.objects.filter(restaurant_id=restaurant_id, is_active=True, is_blocked=False)
+      serializer_class = MealSerializer
+    elif user.role == Role.OWNER:
+      get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
+      meals = Meal.objects.filter(restaurant_id=restaurant_id, is_active=True)
+      serializer_class = OwnerMealSerializer
+    else:
+      return Response({"message": "Only customers and owners can view the meals"}, status=status.HTTP_403_FORBIDDEN)
+
+    page = paginator.paginate_queryset(meals, request)
+    return paginator.get_paginated_response(serializer_class(page, many=True).data)
+
+  def post(self, request, restaurant_id):
+    user = cast(User, request.user)
+
+    if user.role != Role.OWNER:
+      return Response({"message": "Only owners can create a meal"}, status=status.HTTP_403_FORBIDDEN)
+
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
+
+    if restaurant.is_blocked:
+      return Response({"message": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = MealInputSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    meal = serializer.save(restaurant=restaurant)
+
+    return Response(OwnerMealSerializer(meal).data, status=status.HTTP_201_CREATED)
+
 
 @api_view(['POST'])
 def update_order_status(request, order_id):
