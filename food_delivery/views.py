@@ -183,6 +183,78 @@ class MealList(APIView):
     return Response(OwnerMealSerializer(meal).data, status=status.HTTP_201_CREATED)
 
 
+class MealDetail(APIView):
+  def get(self, request, restaurant_id, meal_id):
+    user = cast(User, request.user)
+
+    if user.role == Role.CUSTOMER:
+      meal = get_object_or_404(
+        Meal, id=meal_id, restaurant_id=restaurant_id, is_active=True, is_blocked=False,
+        restaurant__is_active=True, restaurant__is_blocked=False
+      )
+      return Response(MealSerializer(meal).data, status=status.HTTP_200_OK)
+    elif user.role == Role.OWNER:
+      meal = get_object_or_404(
+        Meal, id=meal_id, restaurant_id=restaurant_id, is_active=True,
+        restaurant__is_active=True, restaurant__owner=user
+      )
+      return Response(OwnerMealSerializer(meal).data, status=status.HTTP_200_OK)
+
+    return Response({"message": "Only customers and owners can view the meal"}, status=status.HTTP_403_FORBIDDEN)
+
+  def _get_editable_meal(self, user, restaurant_id, meal_id):
+    meal = get_object_or_404(
+      Meal.objects.select_related("restaurant"), id=meal_id, restaurant_id=restaurant_id, is_active=True,
+      restaurant__is_active=True, restaurant__owner=user
+    )
+
+    if meal.is_blocked or meal.restaurant.is_blocked:
+      return meal, Response({"message": "This meal or its restaurant is blocked by an administrator"},
+                            status=status.HTTP_403_FORBIDDEN)
+    return meal, None
+
+  def _update(self, request, restaurant_id, meal_id, partial):
+    user = cast(User, request.user)
+
+    if user.role != Role.OWNER:
+      return Response({"message": "Only owners can update the meal"}, status=status.HTTP_403_FORBIDDEN)
+
+    meal, blocked = self._get_editable_meal(user, restaurant_id, meal_id)
+    if blocked:
+      return Response({"message": "Meal is blocked by the admin"}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = MealInputSerializer(meal, data=request.data, partial=partial)
+    serializer.is_valid(raise_exception=True)
+    updated_meal = serializer.save()
+
+    return Response(OwnerMealSerializer(updated_meal).data, status=status.HTTP_200_OK)
+
+
+  def put(self, request, restaurant_id, meal_id):
+    return self._update(request, restaurant_id, meal_id, partial=False)
+
+  def patch(self, request, restaurant_id, meal_id):
+    return self._update(request, restaurant_id, meal_id, partial=True)
+
+  def delete(self, request, restaurant_id, meal_id):
+    user = cast(User, request.user)
+
+    if user.role != Role.OWNER:
+      return Response({"message": "Only owners can delete the meal"}, status=status.HTTP_403_FORBIDDEN)
+
+    meal, blocked = self._get_editable_meal(user, restaurant_id, meal_id)
+
+    if blocked:
+      return Response({"message": "Meal is blocked by the admin"}, status=status.HTTP_403_FORBIDDEN)
+
+    meal.is_active = False
+    meal.save(update_fields=["is_active"])
+
+    return Response({"message": "Meal deleted successfully"}, status=status.HTTP_200_OK)
+
+
+  
+
 @api_view(['POST'])
 def update_order_status(request, order_id):
   user = cast(User, request.user)
