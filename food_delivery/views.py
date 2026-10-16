@@ -9,43 +9,10 @@ from typing import cast
 from user.models import User, Role
 
 
-from .models import Restaurant, Meal, Order
-from .serializers import RestaurantSerializer, MealSerializer, OrderSerializer, OrderOutputSerializer, OrderStatusSerializer, OrderDetailOutputSerializer
+from .models import Restaurant, Order
+from .serializers import RestaurantSerializer, OrderSerializer, OrderOutputSerializer, \
+OrderStatusSerializer, OrderDetailOutputSerializer, RestaurantInputSerializer
 from .service import create_order, change_order_status
-
-
-@api_view(['GET'])
-def get_restaurants(request):
-  user = cast(User, request.user)
-  
-  if user.role != Role.CUSTOMER:
-    return Response({"message": "Only customers can browse restaurants"}, status=status.HTTP_403_FORBIDDEN)
-
-  restaurants = Restaurant\
-    .objects\
-    .filter(is_blocked=False, is_active=True)
-
-  paginator = PageNumberPagination()
-  page = paginator.paginate_queryset(restaurants, request)
-  serializer = RestaurantSerializer(page, many=True)
-  return paginator.get_paginated_response(serializer.data)
-
-@api_view(['GET'])
-def get_meals(request, restaurant_id):
-  user = cast(User, request.user)
-
-  if user.role != Role.CUSTOMER:
-    return Response({"message": "Only customers can browse meals"}, status=status.HTTP_403_FORBIDDEN)
-
-  if not restaurant_id:
-    return Response({"message": "Please pass restaurant id"}, status=status.HTTP_400_BAD_REQUEST)
-  
-  meals = Meal.objects.filter(restaurant_id=restaurant_id, is_blocked=False, is_active=True)
-
-  paginator = PageNumberPagination()
-  page = paginator.paginate_queryset(meals, request)
-  serializer = MealSerializer(page, many=True)
-  return paginator.get_paginated_response(serializer.data)
 
 class OrderList(APIView):
   def get(self, request):
@@ -89,6 +56,40 @@ class OrderDetail(APIView):
       return Response({"message": "Only customers and owners can view the order"}, status=status.HTTP_403_FORBIDDEN)
 
     return Response(OrderDetailOutputSerializer(order).data, status=status.HTTP_200_OK)
+
+class RestaurantList(APIView):
+  def get(self, request):
+    user = cast(User, request.user)
+
+    paginator = PageNumberPagination()
+
+    if user.role == Role.CUSTOMER:
+      restaurants = Restaurant.objects.filter(is_active=True, is_blocked=False)
+    elif user.role == Role.OWNER:
+      restaurants = Restaurant.objects.filter(owner=user, is_active=True, is_blocked=False)
+    else:
+      return Response({"message": "Only customers and owners can view the restaurants"}, status=status.HTTP_403_FORBIDDEN) 
+
+    page = paginator.paginate_queryset(restaurants, request)
+    return paginator.get_paginated_response(RestaurantSerializer(page, many=True).data)
+    
+
+  def post(self, request):
+    user = cast(User, request.user)
+
+    if user.role == Role.CUSTOMER:
+      return Response({"message": "Only owner can create a restaurant"}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = RestaurantInputSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    restaurant = Restaurant.objects.create(
+      description=serializer.validated_data["description"],
+      name=serializer.validated_data["name"],
+      owner=user
+    )
+
+    return Response(RestaurantSerializer(restaurant).data, status=status.HTTP_201_CREATED)
 
 @api_view(['POST'])
 def update_order_status(request, order_id):
