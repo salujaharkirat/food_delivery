@@ -15,6 +15,16 @@ class RestaurantSerializer(serializers.ModelSerializer):
     fields = ('id', 'name', 'description')
     read_only_fields = fields
 
+class OwnerRestaurantSerializer(RestaurantSerializer):
+  class Meta(RestaurantSerializer.Meta):
+    fields = RestaurantSerializer.Meta.fields + ('is_blocked',)
+    read_only_fields = fields
+
+class RestaurantInputSerializer(serializers.ModelSerializer):
+  class Meta:
+    model = Restaurant
+    fields = ('name', 'description')
+
 class OrderItemInputSerializer(serializers.Serializer):
   meal_id = serializers.IntegerField()
   quantity = serializers.IntegerField(min_value=1)

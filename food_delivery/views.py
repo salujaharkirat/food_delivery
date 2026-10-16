@@ -11,7 +11,8 @@ from user.models import User, Role
 
 from .models import Restaurant, Order
 from .serializers import RestaurantSerializer, OrderSerializer, OrderOutputSerializer, \
-OrderStatusSerializer, OrderDetailOutputSerializer, RestaurantInputSerializer
+OrderStatusSerializer, OrderDetailOutputSerializer, RestaurantInputSerializer, \
+OwnerRestaurantSerializer
 from .service import create_order, change_order_status
 
 class OrderList(APIView):
@@ -90,6 +91,59 @@ class RestaurantList(APIView):
     )
 
     return Response(RestaurantSerializer(restaurant).data, status=status.HTTP_201_CREATED)
+
+class RestaurantDetail(APIView):
+  def get(self, request, restaurant_id):
+    user = cast(User, request.user)
+
+    if user.role == Role.CUSTOMER:
+      restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, is_blocked=False)
+      return Response(RestaurantSerializer(restaurant).data, status=status.HTTP_200_OK)
+    elif user.role == Role.OWNER:
+      restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
+      return Response(OwnerRestaurantSerializer(restaurant).data, status=status.HTTP_200_OK)
+
+    return Response({"message": "Only customers and owners can view the restaurant"}, status=status.HTTP_403_FORBIDDEN)
+
+  def _update(self, request, restaurant_id, partial):
+    user = cast(User, request.user)
+
+    if user.role != Role.OWNER:
+      return Response({"message": "Only owners can update the restaurant"}, status=status.HTTP_403_FORBIDDEN)
+
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
+
+    if restaurant.is_blocked:
+      return Response({"message": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = RestaurantInputSerializer(restaurant, data=request.data, partial=partial)
+    serializer.is_valid(raise_exception=True)
+    updated_restaurant = serializer.save()
+
+    return Response(OwnerRestaurantSerializer(updated_restaurant).data, status=status.HTTP_200_OK)
+
+
+  def put(self, request, restaurant_id):
+    return self._update(request, restaurant_id, partial=False)
+
+  def patch(self, request, restaurant_id):
+    return self._update(request, restaurant_id, partial=True)
+
+  def delete(self, request, restaurant_id):
+    user = cast(User, request.user)
+
+    if user.role != Role.OWNER:
+      return Response({"message": "Only owners can delete the restaurant"}, status=status.HTTP_403_FORBIDDEN)
+
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
+
+    if restaurant.is_blocked:
+      return Response({"message": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
+
+    restaurant.is_active = False
+    restaurant.save(update_fields=["is_active"])
+
+    return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
 
 @api_view(['POST'])
 def update_order_status(request, order_id):
