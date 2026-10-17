@@ -61,9 +61,9 @@ def login(request):
   refresh = RefreshToken.for_user(user)
 
   payload = {
-    "message": "Login successfull",
+    "message": "Login successful",
     "user": {
-      "id": user.id,
+      "id": user.pk,
       "email": user.email,
       "role": user.role
     },

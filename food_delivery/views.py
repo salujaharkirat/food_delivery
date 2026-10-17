@@ -1,21 +1,27 @@
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+
 from typing import cast
 
 from user.models import User, Role
-
+from user.permissions import IsCustomerOrOwner, IsCustomer, IsOwner, RoleMethodMixin
 
 from .models import Restaurant, Order, Meal
 from .serializers import RestaurantSerializer, OrderSerializer, OrderOutputSerializer, \
 OrderStatusSerializer, OrderDetailOutputSerializer, RestaurantInputSerializer, \
 OwnerRestaurantSerializer, OwnerMealSerializer, MealInputSerializer, MealSerializer
 from .service import create_order, change_order_status
-
-class OrderList(APIView):
+    
+class OrderList(RoleMethodMixin, APIView):
+  permission_map = {
+    "GET": [IsCustomerOrOwner],
+    "POST": [IsCustomer],
+  }
+  
   def get(self, request):
     user = cast(User, request.user)
 
@@ -25,19 +31,12 @@ class OrderList(APIView):
       orders = Order.objects.filter(customer=user)
     elif user.role == Role.OWNER:
       orders = Order.objects.filter(restaurant__owner=user)
-    else:
-      return Response({"message": "Only customers and owners can view the orders"}, status=status.HTTP_403_FORBIDDEN)
-
 
     page = paginator.paginate_queryset(orders, request)
     return paginator.get_paginated_response(OrderOutputSerializer(page, many=True).data)
 
   def post(self, request):
     user = cast(User, request.user)
-    
-    if user.role != Role.CUSTOMER:
-      return Response({"message": "Only customers can place orders"}, status=status.HTTP_403_FORBIDDEN)
-  
     serializer = OrderSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     order = create_order(user, serializer.validated_data)
@@ -45,7 +44,11 @@ class OrderList(APIView):
     return Response(OrderOutputSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
-class OrderDetail(APIView):
+class OrderDetail(RoleMethodMixin, APIView):
+  permission_map = {
+    "GET": [IsCustomerOrOwner]
+  }
+
   def get(self, request, order_id):
     user = cast(User, request.user)
 
@@ -53,12 +56,15 @@ class OrderDetail(APIView):
       order = get_object_or_404(Order, id=order_id, customer=user)
     elif user.role == Role.OWNER:
       order = get_object_or_404(Order, id=order_id, restaurant__owner=user)
-    else:
-      return Response({"message": "Only customers and owners can view the order"}, status=status.HTTP_403_FORBIDDEN)
 
     return Response(OrderDetailOutputSerializer(order).data, status=status.HTTP_200_OK)
 
-class RestaurantList(APIView):
+class RestaurantList(RoleMethodMixin, APIView):
+  permission_map = {
+    "GET": [IsCustomerOrOwner],
+    "POST": [IsOwner]
+  }
+  
   def get(self, request):
     user = cast(User, request.user)
 
@@ -68,8 +74,6 @@ class RestaurantList(APIView):
       restaurants = Restaurant.objects.filter(is_active=True, is_blocked=False)
     elif user.role == Role.OWNER:
       restaurants = Restaurant.objects.filter(owner=user, is_active=True, is_blocked=False)
-    else:
-      return Response({"message": "Only customers and owners can view the restaurants"}, status=status.HTTP_403_FORBIDDEN) 
 
     page = paginator.paginate_queryset(restaurants, request)
     return paginator.get_paginated_response(RestaurantSerializer(page, many=True).data)
@@ -77,9 +81,6 @@ class RestaurantList(APIView):
 
   def post(self, request):
     user = cast(User, request.user)
-
-    if user.role == Role.CUSTOMER:
-      return Response({"message": "Only owner can create a restaurant"}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = RestaurantInputSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -92,7 +93,15 @@ class RestaurantList(APIView):
 
     return Response(RestaurantSerializer(restaurant).data, status=status.HTTP_201_CREATED)
 
-class RestaurantDetail(APIView):
+class RestaurantDetail(RoleMethodMixin, APIView):
+  permission_map = {
+    "GET": [IsCustomerOrOwner],
+    "POST": [IsOwner],
+    "PUT": [IsOwner],
+    "PATCH": [IsOwner],
+    "DELETE": [IsOwner]
+  }
+
   def get(self, request, restaurant_id):
     user = cast(User, request.user)
 
@@ -103,13 +112,8 @@ class RestaurantDetail(APIView):
       restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
       return Response(OwnerRestaurantSerializer(restaurant).data, status=status.HTTP_200_OK)
 
-    return Response({"message": "Only customers and owners can view the restaurant"}, status=status.HTTP_403_FORBIDDEN)
-
   def _update(self, request, restaurant_id, partial):
     user = cast(User, request.user)
-
-    if user.role != Role.OWNER:
-      return Response({"message": "Only owners can update the restaurant"}, status=status.HTTP_403_FORBIDDEN)
 
     restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
 
@@ -132,9 +136,6 @@ class RestaurantDetail(APIView):
   def delete(self, request, restaurant_id):
     user = cast(User, request.user)
 
-    if user.role != Role.OWNER:
-      return Response({"message": "Only owners can delete the restaurant"}, status=status.HTTP_403_FORBIDDEN)
-
     restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
 
     if restaurant.is_blocked:
@@ -145,7 +146,12 @@ class RestaurantDetail(APIView):
 
     return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
 
-class MealList(APIView):
+class MealList(RoleMethodMixin, APIView):
+  permission_map = {
+    "GET": [IsCustomerOrOwner],
+    "POST": [IsOwner]
+  }
+  
   def get(self, request, restaurant_id):
     user = cast(User, request.user)
 
@@ -159,17 +165,12 @@ class MealList(APIView):
       get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
       meals = Meal.objects.filter(restaurant_id=restaurant_id, is_active=True)
       serializer_class = OwnerMealSerializer
-    else:
-      return Response({"message": "Only customers and owners can view the meals"}, status=status.HTTP_403_FORBIDDEN)
 
     page = paginator.paginate_queryset(meals, request)
     return paginator.get_paginated_response(serializer_class(page, many=True).data)
 
   def post(self, request, restaurant_id):
     user = cast(User, request.user)
-
-    if user.role != Role.OWNER:
-      return Response({"message": "Only owners can create a meal"}, status=status.HTTP_403_FORBIDDEN)
 
     restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
 
@@ -183,7 +184,15 @@ class MealList(APIView):
     return Response(OwnerMealSerializer(meal).data, status=status.HTTP_201_CREATED)
 
 
-class MealDetail(APIView):
+class MealDetail(RoleMethodMixin, APIView):
+  permission_map = {
+    "GET": [IsCustomerOrOwner],
+    "POST": [IsOwner],
+    "PUT": [IsOwner],
+    "PATCH": [IsOwner],
+    "DELETE": [IsOwner]
+  }
+  
   def get(self, request, restaurant_id, meal_id):
     user = cast(User, request.user)
 
@@ -200,8 +209,6 @@ class MealDetail(APIView):
       )
       return Response(OwnerMealSerializer(meal).data, status=status.HTTP_200_OK)
 
-    return Response({"message": "Only customers and owners can view the meal"}, status=status.HTTP_403_FORBIDDEN)
-
   def _get_editable_meal(self, user, restaurant_id, meal_id):
     meal = get_object_or_404(
       Meal.objects.select_related("restaurant"), id=meal_id, restaurant_id=restaurant_id, is_active=True,
@@ -215,9 +222,6 @@ class MealDetail(APIView):
 
   def _update(self, request, restaurant_id, meal_id, partial):
     user = cast(User, request.user)
-
-    if user.role != Role.OWNER:
-      return Response({"message": "Only owners can update the meal"}, status=status.HTTP_403_FORBIDDEN)
 
     meal, blocked = self._get_editable_meal(user, restaurant_id, meal_id)
     if blocked:
@@ -239,9 +243,6 @@ class MealDetail(APIView):
   def delete(self, request, restaurant_id, meal_id):
     user = cast(User, request.user)
 
-    if user.role != Role.OWNER:
-      return Response({"message": "Only owners can delete the meal"}, status=status.HTTP_403_FORBIDDEN)
-
     meal, blocked = self._get_editable_meal(user, restaurant_id, meal_id)
 
     if blocked:
@@ -254,19 +255,13 @@ class MealDetail(APIView):
 
 
   
-
 @api_view(['POST'])
+@permission_classes([IsCustomerOrOwner])
 def update_order_status(request, order_id):
-  user = cast(User, request.user)
-
-  if user.role not in (Role.CUSTOMER, Role.OWNER):
-    return Response({"message": "Only customer and owners can update status"}, status=status.HTTP_403_FORBIDDEN)
-
   serializer = OrderStatusSerializer(data=request.data)
   serializer.is_valid(raise_exception=True)
   order = change_order_status(request.user, order_id, serializer.validated_data["status"]) # type: ignore
 
   return Response(OrderOutputSerializer(order).data, status=status.HTTP_200_OK)
-  
-  
+
 
