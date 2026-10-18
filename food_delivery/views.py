@@ -29,9 +29,9 @@ class OrderList(RoleMethodMixin, APIView):
     paginator = PageNumberPagination()
 
     if user.role == Role.CUSTOMER:
-      orders = Order.objects.filter(customer=user)
+      orders = Order.objects.prefetch_related('items').filter(customer=user)
     elif user.role == Role.OWNER:
-      orders = Order.objects.filter(restaurant__owner=user)
+      orders = Order.objects.prefetch_related('items').filter(restaurant__owner=user)
 
     page = paginator.paginate_queryset(orders, request)
     return paginator.get_paginated_response(OrderOutputSerializer(page, many=True).data)
