@@ -6,6 +6,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from user.models import User, Role
 from user.serializers import RegisterSerializer
 
+from food_delivery.models import Restaurant
+from food_delivery.serializers import RestaurantInputSerializer
+
 
 class AdminUserSerializer(serializers.ModelSerializer):
   class Meta:
@@ -70,3 +73,24 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
       instance.set_password(password)
     instance.save()
     return instance
+
+class AdminRestaurantSerializer(serializers.ModelSerializer):
+  owner_email = serializers.EmailField(source="owner.email", read_only=True)
+
+  class Meta:
+    model = Restaurant
+    fields = ("id", "name", "description", "owner", "owner_email", "is_active", "is_blocked")
+    read_only_fields = fields
+
+class AdminRestaurantCreateSerializer(RestaurantInputSerializer):
+  owner = serializers.PrimaryKeyRelatedField(
+    queryset=User.objects.filter(role=Role.OWNER, is_active=True, is_blocked=False),
+    error_messages={"does_not_exist": "No active owner assigned for this restaurant"}
+  )
+
+  class Meta(RestaurantInputSerializer.Meta):
+    fields = RestaurantInputSerializer.Meta.fields + ("owner",)
+
+class AdminRestaurantUpdateSerializer(AdminRestaurantCreateSerializer):
+  class Meta(AdminRestaurantCreateSerializer.Meta):
+    fields = AdminRestaurantCreateSerializer.Meta.fields + ("is_active", "is_blocked",)

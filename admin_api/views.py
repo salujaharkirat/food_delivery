@@ -10,7 +10,10 @@ from user.permissions import IsAdmin
 from user.models import User, Role
 
 from .serializers import AdminUserSerializer, AdminUserCreateSerializer, \
-AdminUserUpdateSerializer
+AdminUserUpdateSerializer, AdminRestaurantSerializer, \
+AdminRestaurantCreateSerializer, AdminRestaurantUpdateSerializer
+
+from food_delivery.models import Restaurant
 
 class AdminAPIView(APIView):
   permission_classes = [IsAdmin]
@@ -87,3 +90,50 @@ class AdminUsersDetail(AdminAPIView):
     user.save(update_fields=["is_active"])
 
     return Response({"message": "User deleted successfully"}, status=status.HTTP_200_OK)
+
+class AdminRestaurantsList(AdminAPIView):
+  def get(self, request):
+    restaurants = Restaurant.objects.select_related("owner").order_by("id")
+    return self.paginated_response(request, restaurants, AdminRestaurantSerializer)
+
+  def post(self, request):
+    serializer = AdminRestaurantCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    restaurant = serializer.save()
+
+    return Response(AdminRestaurantSerializer(restaurant).data, status=status.HTTP_201_CREATED)
+
+class AdminRestaurantsDetail(AdminAPIView):
+  def get(self, request, restaurant_id):
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    return Response(AdminRestaurantSerializer(restaurant).data, status=status.HTTP_200_OK)
+
+  def _update(self, request, restaurant_id, partial):
+    queryset = Restaurant.objects.select_related("owner")
+    restaurant = get_object_or_404(queryset, id=restaurant_id)
+
+    serializer = AdminRestaurantUpdateSerializer(restaurant, data=request.data, partial=partial)
+    serializer.is_valid(raise_exception=True)
+
+    updated_restaurant = serializer.save()
+
+    return Response(AdminRestaurantSerializer(updated_restaurant).data, status=status.HTTP_200_OK)
+
+
+  def patch(self, request, restaurant_id):
+    return self._update(request, restaurant_id, True)
+
+  def put(self, request, restaurant_id):
+    return self._update(request, restaurant_id, False)
+
+  def delete(self, request, restaurant_id):
+    restaurant = get_object_or_404(Restaurant, id=restaurant_id)
+
+    if not restaurant.is_active:
+      raise NotFound("Restaurant is already deleted")
+
+    restaurant.is_active = False
+    restaurant.save(update_fields=("is_active",))
+
+    return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
