@@ -14,8 +14,11 @@ class Command(BaseCommand):
     if not email or not password:
       raise CommandError("Please pass correct email and password")
 
+    if User.objects.filter(is_builtin=True).exists():
+      raise CommandError("The built-in admin already exists. Only one is allowed.")
+
     if User.objects.filter(email__iexact=email).exists():
-      raise CommandError(f"A user exits with the same {email}")
+      raise CommandError(f"A user exists with the same {email}")
 
     try:
       validate_password(password)
