@@ -119,7 +119,7 @@ class RestaurantDetail(RoleMethodMixin, APIView):
     restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
 
     if restaurant.is_blocked:
-      return Response({"message": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
+      return Response({"detail": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = RestaurantInputSerializer(restaurant, data=request.data, partial=partial)
     serializer.is_valid(raise_exception=True)
@@ -140,12 +140,12 @@ class RestaurantDetail(RoleMethodMixin, APIView):
     restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
 
     if restaurant.is_blocked:
-      return Response({"message": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
+      return Response({"detail": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
 
     restaurant.is_active = False
     restaurant.save(update_fields=["is_active"])
 
-    return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
+    return Response({"detail": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
 
 class MealList(RoleMethodMixin, APIView):
   permission_map = {
@@ -176,7 +176,7 @@ class MealList(RoleMethodMixin, APIView):
     restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
 
     if restaurant.is_blocked:
-      return Response({"message": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
+      return Response({"detail": "This restaurant is blocked by an administrator"}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = MealInputSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -218,7 +218,7 @@ class MealDetail(RoleMethodMixin, APIView):
     )
 
     if meal.is_blocked or meal.restaurant.is_blocked:
-      return meal, Response({"message": "This meal or its restaurant is blocked by an administrator"},
+      return meal, Response({"detail": "This meal or its restaurant is blocked by an administrator"},
                             status=status.HTTP_403_FORBIDDEN)
     return meal, None
 
@@ -227,7 +227,7 @@ class MealDetail(RoleMethodMixin, APIView):
 
     meal, blocked = self._get_editable_meal(user, restaurant_id, meal_id)
     if blocked:
-      return Response({"message": "Meal is blocked by the admin"}, status=status.HTTP_403_FORBIDDEN)
+      return Response({"detail": "Meal is blocked by the admin"}, status=status.HTTP_403_FORBIDDEN)
 
     serializer = MealInputSerializer(meal, data=request.data, partial=partial)
     serializer.is_valid(raise_exception=True)
@@ -248,12 +248,12 @@ class MealDetail(RoleMethodMixin, APIView):
     meal, blocked = self._get_editable_meal(user, restaurant_id, meal_id)
 
     if blocked:
-      return Response({"message": "Meal is blocked by the admin"}, status=status.HTTP_403_FORBIDDEN)
+      return Response({"detail": "Meal is blocked by the admin"}, status=status.HTTP_403_FORBIDDEN)
 
     meal.is_active = False
     meal.save(update_fields=["is_active"])
 
-    return Response({"message": "Meal deleted successfully"}, status=status.HTTP_200_OK)
+    return Response({"detail": "Meal deleted successfully"}, status=status.HTTP_200_OK)
 
 
 

@@ -19,11 +19,11 @@ def create_order(user, validated_data):
   tip_amount = validated_data["tip_amount"]
 
   if not get_visible_restaurants().filter(id=restaurant_id).exists():
-    raise ValidationError({"message": "Restaurant does not exist."})
+    raise ValidationError({"detail": "Restaurant does not exist."})
 
   meal_ids = [item["meal_id"] for item in order_items]
   if len(meal_ids) != len(set(meal_ids)):
-    raise ValidationError({"message": "Each meal may appear only once; use quantity instead."})
+    raise ValidationError({"detail": "Each meal may appear only once; use quantity instead."})
 
   meals = {
     meal.pk: meal
@@ -35,7 +35,7 @@ def create_order(user, validated_data):
   missing_meals = set(meal_ids) - meals.keys()
 
   if missing_meals:
-    raise ValidationError({"message": f"Meals not available at this restaurant {missing_meals}"})
+    raise ValidationError({"detail": f"Meals not available at this restaurant {sorted(missing_meals)}"})
 
   coupon = None
   if coupon_code:
@@ -46,8 +46,8 @@ def create_order(user, validated_data):
     ).first()
 
     if coupon is None:
-      raise ValidationError({"message": f"Invalid or expired coupon code {coupon_code}"})
-  
+      raise ValidationError({"detail": f"Invalid or expired coupon code {coupon_code}"})
+
 
   subtotal = Decimal("0.00")
   for item in order_items:
@@ -106,9 +106,9 @@ def change_order_status(user, order_id, new_status):
 
   allowed_roles = ALLOWED_ORDER_STATUS_TRANSITIONS.get((order_status, new_status))
   if allowed_roles is None:
-    raise ValidationError({"message": f"Cannot change order status from {order_status} to {new_status}"})
+    raise ValidationError({"detail": f"Cannot change order status from {order_status} to {new_status}"})
   if actor_role not in allowed_roles:
-    raise PermissionDenied({"message": f"User not authorized to change status from {order_status} to {new_status}"})
+    raise PermissionDenied(f"User not authorized to change status from {order_status} to {new_status}")
 
   order.status = new_status
   order.save(update_fields=["status"])

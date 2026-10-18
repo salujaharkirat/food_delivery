@@ -39,7 +39,7 @@ class AdminUsersList(AdminAPIView):
     user = cast(User, serializer.save())
 
     payload = {
-      "message": f"User created successfully",
+      "detail": "User created successfully",
       "user": {
         "id": user.id,
         "email": user.email,
@@ -88,7 +88,7 @@ class AdminUsersDetail(AdminAPIView):
     user.is_active = False
     user.save(update_fields=["is_active"])
 
-    return Response({"message": "User deleted successfully"}, status=status.HTTP_200_OK)
+    return Response({"detail": "User deleted successfully"}, status=status.HTTP_200_OK)
 
 class AdminRestaurantsList(AdminAPIView):
   def get(self, request):
@@ -135,7 +135,7 @@ class AdminRestaurantsDetail(AdminAPIView):
     restaurant.is_active = False
     restaurant.save(update_fields=("is_active",))
 
-    return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
+    return Response({"detail": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
 
 
 class AdminMealsList(AdminAPIView):
@@ -183,4 +183,4 @@ class AdminMealsDetail(AdminAPIView):
     meal.is_active = False
     meal.save(update_fields=("is_active",))
 
-    return Response({"message": "meal deleted successfully"}, status=status.HTTP_200_OK)
+    return Response({"detail": "Meal deleted successfully"}, status=status.HTTP_200_OK)
