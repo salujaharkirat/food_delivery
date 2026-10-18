@@ -6,8 +6,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from user.models import User, Role
 from user.serializers import RegisterSerializer
 
-from food_delivery.models import Restaurant
-from food_delivery.serializers import RestaurantInputSerializer
+from food_delivery.models import Restaurant, Meal
+from food_delivery.serializers import RestaurantInputSerializer, MealInputSerializer
 
 
 class AdminUserSerializer(serializers.ModelSerializer):
@@ -94,3 +94,22 @@ class AdminRestaurantCreateSerializer(RestaurantInputSerializer):
 class AdminRestaurantUpdateSerializer(AdminRestaurantCreateSerializer):
   class Meta(AdminRestaurantCreateSerializer.Meta):
     fields = AdminRestaurantCreateSerializer.Meta.fields + ("is_active", "is_blocked",)
+
+class AdminMealSerializer(serializers.ModelSerializer):
+  restaurant_name = serializers.CharField(source="restaurant.name", read_only=True)
+  class Meta:
+    model = Meal
+    fields = ("id", "name", "description", "price", "restaurant", "restaurant_name", "is_blocked", "is_active")
+
+class AdminMealCreateSerializer(MealInputSerializer):
+  restaurant = serializers.PrimaryKeyRelatedField(
+    queryset=Restaurant.objects.filter(is_active=True, is_blocked=False),
+    error_messages={"does_not_exist": "No restaurant available for the meals"}
+  )
+  class Meta(MealInputSerializer.Meta):
+    fields = MealInputSerializer.Meta.fields + ("restaurant", )
+
+class AdminMealUpdateSerializer(AdminMealCreateSerializer):
+  class Meta(AdminMealCreateSerializer.Meta):
+    fields = AdminMealCreateSerializer.Meta.fields + ("is_active", "is_blocked",)
+    

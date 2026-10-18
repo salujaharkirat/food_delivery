@@ -11,9 +11,10 @@ from user.models import User, Role
 
 from .serializers import AdminUserSerializer, AdminUserCreateSerializer, \
 AdminUserUpdateSerializer, AdminRestaurantSerializer, \
-AdminRestaurantCreateSerializer, AdminRestaurantUpdateSerializer
+AdminRestaurantCreateSerializer, AdminRestaurantUpdateSerializer, \
+AdminMealSerializer, AdminMealCreateSerializer, AdminMealUpdateSerializer
 
-from food_delivery.models import Restaurant
+from food_delivery.models import Restaurant, Meal
 
 class AdminAPIView(APIView):
   permission_classes = [IsAdmin]
@@ -23,9 +24,7 @@ class AdminAPIView(APIView):
     page = paginator.paginate_queryset(data, request)
     return paginator.get_paginated_response(serializer(page, many=True).data)
     
-    
 
-# Create your views here.
 class AdminUsersList(AdminAPIView):
   def get(self, request):
 
@@ -137,3 +136,55 @@ class AdminRestaurantsDetail(AdminAPIView):
     restaurant.save(update_fields=("is_active",))
 
     return Response({"message": "Restaurant deleted successfully"}, status=status.HTTP_200_OK)
+
+
+class AdminMealsList(AdminAPIView):
+  def get(self, request):
+    meals = Meal.objects.select_related("restaurant").order_by("id")
+    return self.paginated_response(request, meals, AdminMealSerializer)
+
+  def post(self, request):
+    serializer = AdminMealCreateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    meal = serializer.save()
+
+    return Response(AdminMealSerializer(meal).data, status=status.HTTP_201_CREATED)
+
+class AdminMealsDetail(AdminAPIView):
+  def get(self, request, meal_id):
+    queryset = Meal.objects.select_related("restaurant")
+    meal = get_object_or_404(queryset, id=meal_id)
+
+    return Response(AdminMealSerializer(meal).data, status=status.HTTP_200_OK)
+
+  def _update(self, request, meal_id, partial):
+    queryset = Meal.objects.select_related("restaurant")
+    meal = get_object_or_404(queryset, id=meal_id)
+
+    serializer = AdminMealUpdateSerializer(meal, data=request.data, partial=partial)
+    serializer.is_valid(raise_exception=True)
+    new_meal = serializer.save()
+
+    return Response(AdminMealSerializer(new_meal).data, status=status.HTTP_200_OK)
+
+
+  def put(self, request, meal_id):
+    return self._update(request, meal_id, False)
+
+  def patch(self, request, meal_id):
+    return self._update(request, meal_id, True)
+
+  def delete(self, request, meal_id):
+    meal = get_object_or_404(Meal, id=meal_id)
+
+    if not meal.is_active:
+      raise NotFound("Meal is already deleted")
+
+    meal.is_active = False
+    meal.save(update_fields=("is_active",))
+
+    return Response({"message": "meal deleted successfully"}, status=status.HTTP_200_OK)
+  
+  
+
+    
