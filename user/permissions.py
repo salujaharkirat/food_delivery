@@ -34,5 +34,9 @@ class IsOwner(BaseRole):
 class IsCustomerOrOwner(BaseRole):
   allowed_roles = (Role.OWNER, Role.CUSTOMER,)
   message = "Only customers or owner can perform this action"
+
+class IsAdmin(BaseRole):
+  allowed_roles = (Role.ADMIN,)
+  message = "Only admin can perform this action"
   
   
