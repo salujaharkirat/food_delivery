@@ -9,6 +9,7 @@ from user.models import User, Role
 
 from .models import Restaurant, Coupon, Meal, Order, OrderItem, OrderStatus, OrderStatusHistory
 from .constants import ALLOWED_ORDER_STATUS_TRANSITIONS
+from .db_utils import get_visible_restaurants
 
 @transaction.atomic
 def create_order(user, validated_data):
@@ -17,7 +18,7 @@ def create_order(user, validated_data):
   coupon_code = validated_data.get("coupon_code")
   tip_amount = validated_data["tip_amount"]
 
-  if not Restaurant.objects.filter(id=restaurant_id, is_active=True, is_blocked=False).exists():
+  if not get_visible_restaurants().filter(id=restaurant_id).exists():
     raise ValidationError({"message": "Restaurant does not exist."})
 
   meal_ids = [item["meal_id"] for item in order_items]

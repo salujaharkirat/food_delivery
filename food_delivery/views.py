@@ -15,7 +15,8 @@ from .serializers import RestaurantSerializer, OrderSerializer, OrderOutputSeria
 OrderStatusSerializer, OrderDetailOutputSerializer, RestaurantInputSerializer, \
 OwnerRestaurantSerializer, OwnerMealSerializer, MealInputSerializer, MealSerializer
 from .service import create_order, change_order_status
-    
+from .db_utils import get_visible_restaurants
+
 class OrderList(RoleMethodMixin, APIView):
   permission_map = {
     "GET": [IsCustomerOrOwner],
@@ -71,7 +72,7 @@ class RestaurantList(RoleMethodMixin, APIView):
     paginator = PageNumberPagination()
 
     if user.role == Role.CUSTOMER:
-      restaurants = Restaurant.objects.filter(is_active=True, is_blocked=False)
+      restaurants = get_visible_restaurants()
     elif user.role == Role.OWNER:
       restaurants = Restaurant.objects.filter(owner=user, is_active=True, is_blocked=False)
 
@@ -106,7 +107,7 @@ class RestaurantDetail(RoleMethodMixin, APIView):
     user = cast(User, request.user)
 
     if user.role == Role.CUSTOMER:
-      restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, is_blocked=False)
+      restaurant = get_object_or_404(get_visible_restaurants(), id=restaurant_id)
       return Response(RestaurantSerializer(restaurant).data, status=status.HTTP_200_OK)
     elif user.role == Role.OWNER:
       restaurant = get_object_or_404(Restaurant, id=restaurant_id, is_active=True, owner=user)
@@ -158,7 +159,7 @@ class MealList(RoleMethodMixin, APIView):
     paginator = PageNumberPagination()
 
     if user.role == Role.CUSTOMER:
-      get_object_or_404(Restaurant, id=restaurant_id, is_active=True, is_blocked=False)
+      get_object_or_404(get_visible_restaurants(), id=restaurant_id)
       meals = Meal.objects.filter(restaurant_id=restaurant_id, is_active=True, is_blocked=False)
       serializer_class = MealSerializer
     elif user.role == Role.OWNER:
@@ -199,7 +200,8 @@ class MealDetail(RoleMethodMixin, APIView):
     if user.role == Role.CUSTOMER:
       meal = get_object_or_404(
         Meal, id=meal_id, restaurant_id=restaurant_id, is_active=True, is_blocked=False,
-        restaurant__is_active=True, restaurant__is_blocked=False
+        restaurant__is_active=True, restaurant__is_blocked=False,
+        restaurant__owner__is_active=True, restaurant__owner__is_blocked=False
       )
       return Response(MealSerializer(meal).data, status=status.HTTP_200_OK)
     elif user.role == Role.OWNER:
