@@ -41,7 +41,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'user',
-    'food_delivery',    
+    'food_delivery',
 ]
 
 REST_FRAMEWORK = {

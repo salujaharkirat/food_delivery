@@ -28,5 +28,3 @@ class Command(BaseCommand):
     User.objects.create_superuser(email=email, password=password, is_builtin=True)
     self.stdout.write(f"Built in admin created {email}")
     return
-
-    

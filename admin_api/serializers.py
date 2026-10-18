@@ -112,4 +112,3 @@ class AdminMealCreateSerializer(MealInputSerializer):
 class AdminMealUpdateSerializer(AdminMealCreateSerializer):
   class Meta(AdminMealCreateSerializer.Meta):
     fields = AdminMealCreateSerializer.Meta.fields + ("is_active", "is_blocked",)
-    

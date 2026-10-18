@@ -23,7 +23,7 @@ class AdminAPIView(APIView):
     paginator = PageNumberPagination()
     page = paginator.paginate_queryset(data, request)
     return paginator.get_paginated_response(serializer(page, many=True).data)
-    
+
 
 class AdminUsersList(AdminAPIView):
   def get(self, request):
@@ -184,7 +184,3 @@ class AdminMealsDetail(AdminAPIView):
     meal.save(update_fields=("is_active",))
 
     return Response({"message": "meal deleted successfully"}, status=status.HTTP_200_OK)
-  
-  
-
-    

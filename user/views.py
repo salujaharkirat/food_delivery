@@ -54,10 +54,10 @@ def login(request):
     return Response({"message": "Invalid email or password"}, status=status.HTTP_400_BAD_REQUEST)
 
   user = cast(User, user)
-  
+
   if user.is_blocked:
     return Response({"message": "User is blocked"}, status=status.HTTP_403_FORBIDDEN)
-  
+
   refresh = RefreshToken.for_user(user)
 
   payload = {

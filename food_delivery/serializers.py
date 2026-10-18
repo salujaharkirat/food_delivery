@@ -76,4 +76,3 @@ class OrderDetailOutputSerializer(OrderOutputSerializer):
   class Meta(OrderOutputSerializer.Meta):
     fields = OrderOutputSerializer.Meta.fields + ('status_history',)
     read_only_fields = fields
-

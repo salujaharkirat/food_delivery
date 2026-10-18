@@ -38,5 +38,3 @@ class IsCustomerOrOwner(BaseRole):
 class IsAdmin(BaseRole):
   allowed_roles = (Role.ADMIN,)
   message = "Only admin can perform this action"
-  
-  

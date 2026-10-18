@@ -22,7 +22,7 @@ class OrderList(RoleMethodMixin, APIView):
     "GET": [IsCustomerOrOwner],
     "POST": [IsCustomer],
   }
-  
+
   def get(self, request):
     user = cast(User, request.user)
 
@@ -41,7 +41,7 @@ class OrderList(RoleMethodMixin, APIView):
     serializer = OrderSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     order = create_order(user, serializer.validated_data)
-  
+
     return Response(OrderOutputSerializer(order).data, status=status.HTTP_201_CREATED)
 
 
@@ -65,7 +65,7 @@ class RestaurantList(RoleMethodMixin, APIView):
     "GET": [IsCustomerOrOwner],
     "POST": [IsOwner]
   }
-  
+
   def get(self, request):
     user = cast(User, request.user)
 
@@ -78,7 +78,7 @@ class RestaurantList(RoleMethodMixin, APIView):
 
     page = paginator.paginate_queryset(restaurants, request)
     return paginator.get_paginated_response(RestaurantSerializer(page, many=True).data)
-    
+
 
   def post(self, request):
     user = cast(User, request.user)
@@ -152,7 +152,7 @@ class MealList(RoleMethodMixin, APIView):
     "GET": [IsCustomerOrOwner],
     "POST": [IsOwner]
   }
-  
+
   def get(self, request, restaurant_id):
     user = cast(User, request.user)
 
@@ -193,7 +193,7 @@ class MealDetail(RoleMethodMixin, APIView):
     "PATCH": [IsOwner],
     "DELETE": [IsOwner]
   }
-  
+
   def get(self, request, restaurant_id, meal_id):
     user = cast(User, request.user)
 
@@ -256,7 +256,7 @@ class MealDetail(RoleMethodMixin, APIView):
     return Response({"message": "Meal deleted successfully"}, status=status.HTTP_200_OK)
 
 
-  
+
 @api_view(['POST'])
 @permission_classes([IsCustomerOrOwner])
 def update_order_status(request, order_id):
@@ -265,5 +265,3 @@ def update_order_status(request, order_id):
   order = change_order_status(request.user, order_id, serializer.validated_data["status"]) # type: ignore
 
   return Response(OrderOutputSerializer(order).data, status=status.HTTP_200_OK)
-
-
