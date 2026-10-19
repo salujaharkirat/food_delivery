@@ -7,9 +7,10 @@ from typing import cast
 from django.shortcuts import get_object_or_404
 
 from user.permissions import IsAdmin
-from user.models import User, Role
+from user.models import User
+from user.serializers import RegisterSerializer
 
-from .serializers import AdminUserSerializer, AdminUserCreateSerializer, \
+from .serializers import AdminUserSerializer, \
 AdminUserUpdateSerializer, AdminRestaurantSerializer, \
 AdminRestaurantCreateSerializer, AdminRestaurantUpdateSerializer, \
 AdminMealSerializer, AdminMealCreateSerializer, AdminMealUpdateSerializer
@@ -33,7 +34,7 @@ class AdminUsersList(AdminAPIView):
 
 
   def post(self, request):
-    serializer = AdminUserCreateSerializer(data=request.data, context={"request": request})
+    serializer = RegisterSerializer(data=request.data, context={"request": request})
     serializer.is_valid(raise_exception=True)
 
     user = cast(User, serializer.save())
@@ -58,9 +59,6 @@ class AdminUsersDetail(AdminAPIView):
   def _update(self, request, user_id, partial):
     user = get_object_or_404(User, id=user_id)
 
-    if user.role == Role.ADMIN and not request.user.is_builtin:
-      raise PermissionDenied("Only the built-in admin can update admins")
-
     serializer = AdminUserUpdateSerializer(user, data=request.data, partial=partial, context={"request": request})
     serializer.is_valid(raise_exception=True)
     serializer.save()
@@ -81,9 +79,6 @@ class AdminUsersDetail(AdminAPIView):
 
     if user.is_builtin:
       raise PermissionDenied("Built in user cannot be deleted")
-
-    if user.role == Role.ADMIN and not request.user.is_builtin:
-      raise PermissionDenied("Only the built-in admin can delete admins")
 
     user.is_active = False
     user.save(update_fields=["is_active"])

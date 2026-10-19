@@ -14,13 +14,11 @@ SEED_USERS = [
   {"email": "customer3@test.com", "role": Role.CUSTOMER},
   {"email": "customer4@test.com", "role": Role.CUSTOMER},
   {"email": "customer5@test.com", "role": Role.CUSTOMER},
-  {"email": "admin1@test.com", "role": Role.ADMIN},
-  {"email": "admin2@test.com", "role": Role.ADMIN},
 ]
 
 
 class Command(BaseCommand):
-  help = "Create the demo customers and admins (safe to run repeatedly; existing users are skipped)."
+  help = "Create the demo customers (safe to run repeatedly; existing users are skipped)."
 
   def handle(self, *args, **options):
     password = os.environ.get("SEED_USER_PASSWORD") or ""
