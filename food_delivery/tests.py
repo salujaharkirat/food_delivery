@@ -1,14 +1,16 @@
 from decimal import Decimal
+from datetime import timedelta
 
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from user.models import User, Role
-from food_delivery.models import Restaurant, Order, Meal
+from food_delivery.models import Restaurant, Order, Meal, OrderStatus, OrderItem
 
 from config.base_test import BaseAPITestCase
 
 RESTAURANTS = "/api/restaurants/"
+ORDERS = "/api/orders/"
 
 def ids(response):
   return {item["id"] for item in response.data["results"]}
@@ -382,3 +384,173 @@ class CustomerBrowsingTests(BaseAPITestCase):
     self.assertEqual(self.client.get(f"{RESTAURANTS}999999/").status_code, 404)
     self.assertEqual(self.client.get(f"{RESTAURANTS}999999/meals/").status_code, 404)
     self.assertEqual(self.client.get(f"{RESTAURANTS}{self.restaurant.pk}/meals/999999/").status_code, 404)
+
+class PlaceOrderTests(BaseAPITestCase):
+  def setUp(self):
+    self.owner = self.make_owner()
+    self.restaurant = self.make_restaurant(self.owner)
+    self.curry = self.make_meal(self.restaurant, name="Curry", price="10.00")
+    self.rice = self.make_meal(self.restaurant, name="rice", price="5.50")
+    self.customer = self.make_user("customer@test.com")
+    self.auth_as(self.customer)
+
+  def body(self, **extra):
+    body = {
+      "restaurant_id": self.restaurant.pk,
+      "items": [{"meal_id": self.curry.pk, "quantity": 3}, {"meal_id": self.rice.pk, "quantity": 2}],
+      "tip_amount": "3.00"
+    }
+
+    body.update(extra)
+    return body
+
+  def place(self, **extra):
+    return self.client.post(ORDERS, self.body(**extra), format="json")
+
+  def assert_rejected(self, response, expected=400):
+    self.assertEqual(response.status_code, expected, response.data)
+    self.assertEqual(Order.objects.count(), 0)
+    self.assertEqual(OrderItem.objects.count(), 0)
+
+  def test_place_order_calculates_totals_and_stores_everything(self):
+    response = self.place()
+
+    self.assertEqual(response.status_code, 201)
+    self.assertEqual(response.data["status"], "placed")
+    self.assertEqual(response.data["restaurant_id"], self.restaurant.pk)
+    self.assertEqual(response.data["subtotal"], "41.00")
+    self.assertEqual(response.data["tip_amount"], "3.00")
+    self.assertEqual(response.data["discount_amount"], "0.00")
+    self.assertEqual(response.data["total_amount"], "44.00")
+    self.assertIsNone(response.data["coupon_id"])
+
+    order = Order.objects.get(id=response.data["id"])
+    self.assertEqual(order.customer, self.customer)
+    self.assertEqual(order.items.count(), 2)
+
+    prices = {item.meal_id: (item.quantity, item.unit_price) for item in order.items.all()}
+    self.assertEqual(prices, {self.curry.pk: (3, Decimal("10.00")), self.rice.pk: (2, Decimal("5.50"))})
+
+  def test_tip_is_optional_and_defaults_to_zero(self):
+    body = self.body()
+    del body["tip_amount"]
+
+    response = self.client.post(ORDERS, body, format="json")
+
+    self.assertEqual(response.status_code, 201)
+    self.assertEqual(response.data["tip_amount"], "0.00")
+    self.assertEqual(response.data["total_amount"], "41.00")
+
+  def test_first_status_history_row_is_written(self):
+    order_id = self.place().data["id"]
+
+    history = self.client.get(f"{ORDERS}{order_id}/").data["status_history"]
+
+    self.assertEqual(len(history), 1)
+    self.assertEqual(history[0]["status"], OrderStatus.PLACED)
+    self.assertEqual(history[0]["changed_by"], self.customer.pk)
+
+  def test_client_cannot_set_computed_fields(self):
+    items = [{"meal_id": self.curry.pk, "quantity": 1, "unit_price": "0.01"}]
+    response = self.place(
+      items=items, status="delivered", subtotal="0.01", discount_amount="5.00", total_amount="0.01",
+      customer=self.make_user("other@test.com").pk,
+    )
+
+    self.assertEqual(response.status_code, 201)
+    order = Order.objects.get()
+    self.assertEqual(order.status, OrderStatus.PLACED)
+    self.assertEqual(order.customer, self.customer)
+    self.assertEqual((order.subtotal, order.discount_amount, order.total_amount), (Decimal("10.00"), Decimal("0"), Decimal("13.00")))
+    self.assertEqual(order.items.get().unit_price, Decimal("10.00"))
+
+  def test_coupon_applies_a_whole_percentage_discount(self):
+    coupon = self.make_coupon(code="SAVE10", percentage="10")
+
+    response = self.place(coupon_code="SAVE10")
+
+    self.assertEqual(response.status_code, 201)
+    self.assertEqual(response.data["coupon_id"], coupon.pk)
+    self.assertEqual(response.data["discount_amount"], "4.10")
+    self.assertEqual(response.data["total_amount"], "39.90")
+
+  def test_discount_rounds_half_up_to_two_decimals(self):
+    self.make_coupon(code="QUARTER", percentage="25")
+    cheap = self.make_meal(self.restaurant, name="Odd price", price="10.10")
+
+    response = self.place(items=[{"meal_id": cheap.pk, "quantity": 1}], tip_amount="0", coupon_code="QUARTER")
+
+    self.assertEqual(response.data["discount_amount"], "2.53")
+    self.assertEqual(response.data["total_amount"], "7.57")
+
+  def test_bad_coupons_are_rejected(self):
+    c1 = self.make_coupon(code="EXPIRED", expires_in=timedelta(seconds=-1))
+    c2 = self.make_coupon(code="INACTIVE", is_active=False)
+
+    response = self.place(coupon_code=c1.code)
+    self.assert_rejected(response)
+
+    response = self.place(coupon_code=c2.code)
+    self.assert_rejected(response)
+
+  def test_meal_from_another_restaurant_is_rejected(self):
+    elsewhere = self.make_meal(self.make_restaurant(self.make_owner("other@test.com"), name="Elsewhere"), name="Far away")
+
+    self.assert_rejected(self.place(items=[{"meal_id": elsewhere.pk, "quantity": 1}]))
+    self.assert_rejected(self.place(items=[
+      {"meal_id": self.curry.pk, "quantity": 1}, {"meal_id": elsewhere.pk, "quantity": 1},
+    ]))
+
+  def test_invalid_items_are_rejected(self):
+    meal_id = self.curry.pk
+    bad_items = {
+      "empty_list": [],
+      "quantity_zero": [{"meal_id": meal_id, "quantity": 0}],
+      "fractional_quantity": [{"meal_id": meal_id, "quantity": 1.5}],
+      "missing_quantity": [{"meal_id": meal_id}],
+      "missing_meal": [{"quantity": 1}],
+      "unknown_meal": [{"meal_id": 999999, "quantity": 1}],
+      "duplicate_meal": [{"meal_id": meal_id, "quantity": 1}, {"meal_id": meal_id, "quantity": 2}],
+    }
+
+    for _, items in bad_items.items():
+      with self.subTest():
+        self.assert_rejected(self.place(items=items))
+
+  def test_unavailable_meals_and_restaurants_are_rejected(self):
+    inactive_meal = self.make_meal(self.restaurant, is_active=False)
+    blocked_meal = self.make_meal(self.restaurant, is_blocked=True)
+    meal = self.make_meal(self.restaurant, name="Test meal", price="5.00")
+
+    self.assert_rejected(self.place(items=[
+      {"meal_id": inactive_meal.pk, "quantity": 1}
+    ]))
+
+    self.assert_rejected(self.place(items=[
+      {"meal_id": blocked_meal.pk, "quantity": 1}
+    ]))
+
+    self.restaurant.is_blocked = True
+    self.restaurant.save()
+
+    self.assert_rejected(self.place(items=[
+      {"meal_id": meal.pk, "quantity": 1}
+    ]))
+
+    self.restaurant.is_blocked = False
+    self.restaurant.is_active = False
+    self.restaurant.save()
+
+    self.assert_rejected(self.place(items=[
+      {"meal_id": meal.pk, "quantity": 1}
+    ]))
+
+    self.restaurant.is_blocked = False
+    self.restaurant.is_active = True
+    self.restaurant.save()
+
+    response = self.place(items=[
+      {"meal_id": meal.pk, "quantity": 2}
+    ])
+
+    self.assertEqual(response.status_code, 201)
