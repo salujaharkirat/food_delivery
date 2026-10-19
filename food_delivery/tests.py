@@ -307,3 +307,78 @@ class OwnerOrderTests(BaseAPITestCase):
 
   def test_detail_of_another_restaurants_order_is_not_found(self):
     self.assertEqual(self.client.get(f"/api/orders/{self.others_order.pk}/").status_code, 404)
+
+
+class CustomerBrowsingTests(BaseAPITestCase):
+  def setUp(self):
+    self.owner = self.make_owner()
+    self.restaurant = self.make_restaurant(self.owner)
+    self.meal = self.make_meal(self.restaurant)
+    self.customer = self.make_user("customer@test.com")
+    self.auth_as(self.customer)
+
+  def test_list_and_detail_show_a_visible_restaurant(self):
+    listed = self.client.get(RESTAURANTS)
+    detail = self.client.get(f"{RESTAURANTS}{self.restaurant.pk}/")
+
+    self.assertEqual(listed.status_code, 200)
+    self.assertIn(self.restaurant.pk, ids(listed))
+    self.assertEqual(detail.status_code, 200)
+    self.assertEqual(detail.data["name"], self.restaurant.name)
+
+  def test_customer_sees_restaurants_of_every_owner(self):
+    other = self.make_restaurant(self.make_owner("other@test.com"), name="Second Place")
+
+    self.assertEqual(ids(self.client.get(RESTAURANTS)), {self.restaurant.pk, other.pk})
+
+  def test_hidden_restaurants_are_not_listed_and_not_found(self):
+    owner = self.make_owner(f"owner_blocked@test.com")
+    restaurant = self.make_restaurant(owner, name="Hiding blocked owner")
+    meal = self.make_meal(restaurant, name="Hidden meal")
+
+    restaurant.is_blocked=True
+    restaurant.save()
+
+    base = f"{RESTAURANTS}{restaurant.pk}/"
+
+    self.assertNotIn(restaurant.pk, ids(self.client.get(RESTAURANTS)))
+    self.assertEqual(self.client.get(base).status_code, 404)
+    self.assertEqual(self.client.get(f"{base}meals/").status_code, 404)
+    self.assertEqual(self.client.get(f"{base}meals/{meal.pk}/").status_code, 404)
+
+    restaurant.is_blocked = False
+    restaurant.save()
+
+    owner.is_blocked = True
+    owner.save()
+
+    self.assertNotIn(restaurant.pk, ids(self.client.get(RESTAURANTS)))
+    self.assertEqual(self.client.get(base).status_code, 404)
+    self.assertEqual(self.client.get(f"{base}meals/").status_code, 404)
+    self.assertEqual(self.client.get(f"{base}meals/{meal.pk}/").status_code, 404)
+
+  def test_blocked_and_deleted_meals_are_hidden(self):
+    blocked = self.make_meal(self.restaurant, name="Blocked", is_blocked=True)
+    deleted = self.make_meal(self.restaurant, name="Deleted", is_active=False)
+    base = f"{RESTAURANTS}{self.restaurant.pk}/meals/"
+
+    self.assertEqual(ids(self.client.get(base)), {self.meal.pk})
+    self.assertEqual(self.client.get(f"{base}{blocked.pk}/").status_code, 404)
+    self.assertEqual(self.client.get(f"{base}{deleted.pk}/").status_code, 404)
+
+  def test_meal_detail_of_a_visible_meal(self):
+    response = self.client.get(f"{RESTAURANTS}{self.restaurant.pk}/meals/{self.meal.pk}/")
+
+    self.assertEqual(response.status_code, 200)
+    self.assertEqual(response.data["name"], self.meal.name)
+    self.assertEqual(Decimal(response.data["price"]), self.meal.price)
+
+  def test_meal_under_the_wrong_restaurant_is_not_found(self):
+    second = self.make_restaurant(self.make_owner("other@test.com"), name="Second Place")
+
+    self.assertEqual(self.client.get(f"{RESTAURANTS}{second.pk}/meals/{self.meal.pk}/").status_code, 404)
+
+  def test_unknown_ids_are_not_found(self):
+    self.assertEqual(self.client.get(f"{RESTAURANTS}999999/").status_code, 404)
+    self.assertEqual(self.client.get(f"{RESTAURANTS}999999/meals/").status_code, 404)
+    self.assertEqual(self.client.get(f"{RESTAURANTS}{self.restaurant.pk}/meals/999999/").status_code, 404)
