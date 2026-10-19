@@ -3,13 +3,14 @@ from datetime import timedelta
 
 from rest_framework.test import APITestCase
 from django.utils import timezone
+from django.test import override_settings
 
 from user.models import User, Role
 from food_delivery.models import Restaurant, Meal, Coupon, \
 Order, OrderStatus, OrderItem, OrderStatusHistory
 
 PASSWORD = "Str0ng!pass#92"
-
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class BaseAPITestCase(APITestCase):
   password = PASSWORD
 

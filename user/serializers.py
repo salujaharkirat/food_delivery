@@ -31,3 +31,6 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
   email = serializers.EmailField(max_length=255)
   password = serializers.CharField(write_only=True, style={"input_type": "password"})
+
+  def validate_email(self, value):
+    return value.strip().lower()
