@@ -1,11 +1,9 @@
 from decimal import Decimal
 from datetime import timedelta
 
-from rest_framework import status
-from rest_framework.test import APITestCase
-
-from user.models import User, Role
-from food_delivery.models import Restaurant, Order, Meal, OrderStatus, OrderItem
+from user.models import Role
+from food_delivery.models import Restaurant, Order, Meal, OrderStatus, OrderItem, \
+OrderStatusHistory
 
 from config.base_test import BaseAPITestCase
 
@@ -601,3 +599,68 @@ class CustomerOrderViewTests(BaseAPITestCase):
     self.assertEqual(detail.status_code, 200)
     self.assertEqual(detail.data["items"][0]["meal_id"], self.meal.pk)
     self.assertEqual(detail.data["items"][0]["unit_price"], "10.00")
+
+class OrderStatusTests(BaseAPITestCase):
+  def setUp(self):
+    self.owner = self.make_owner()
+    self.customer = self.make_user("customer@test.com")
+    self.admin = self.make_admin()
+    self.restaurant = self.make_restaurant(self.owner)
+    self.meal = self.make_meal(self.restaurant)
+    self.users = {Role.CUSTOMER: self.customer, Role.OWNER: self.owner, Role.ADMIN: self.admin}
+    self.tokens = {role: self.login(user) for role, user in self.users.items()}
+
+  def new_order(self, status=OrderStatus.PLACED):
+    return self.make_order(self.customer, self.restaurant, [(self.meal, 1)], status=status)
+
+  def post_status(self, order, new_status, token):
+    self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+    return self.client.post(f"/api/orders/{order.pk}/status/", {"status": new_status}, format="json")
+
+  def change(self, order, new_status, role):
+    return self.post_status(order, new_status, self.tokens[role])
+
+  def change_as(self, order, new_status, user):
+    return self.post_status(order, new_status, self.login(user))
+
+  def history(self, order):
+    return list(OrderStatusHistory.objects.filter(order=order).values_list("status", flat=True))
+
+  def test_customer_cannot_cancel_once_owner_has_started(self):
+    order = self.new_order()
+    response = self.change(order, OrderStatus.PROCESSING, Role.OWNER)
+    self.assertEqual(response.status_code, 200)
+    response = self.change(order, OrderStatus.PLACED, Role.CUSTOMER)
+    self.assertEqual(response.status_code, 400)
+    order.refresh_from_db()
+    self.assertEqual(order.status, OrderStatus.PROCESSING)
+
+  def test_unknown_order_is_not_found(self):
+    self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.tokens[Role.OWNER]}")
+    self.assertEqual(self.client.post("/api/orders/999999/status/", {"status": OrderStatus.PROCESSING}, format="json").status_code, 404)
+
+  def test_another_owner_cannot_change_the_order(self):
+    stranger = self.make_owner("stranger@test.com")
+    order = self.new_order()
+    response = self.change_as(order, OrderStatus.PROCESSING, stranger)
+
+    self.assertEqual(response.status_code, 404)
+    order.refresh_from_db()
+    self.assertEqual(order.status, OrderStatus.PLACED)
+    self.assertEqual(self.history(order), [OrderStatus.PLACED])
+
+  def test_full_lifecycle_is_recorded_in_history(self):
+    order = self.new_order()
+    steps = [
+      (Role.OWNER, OrderStatus.PROCESSING),
+      (Role.OWNER, OrderStatus.IN_ROUTE),
+      (Role.OWNER, OrderStatus.DELIVERED),
+      (Role.CUSTOMER, OrderStatus.RECEIVED),
+    ]
+
+    for role, status in steps:
+      self.assertEqual(self.change(order, status, role).status_code, 200)
+
+    order.refresh_from_db()
+    self.assertEqual(order.status, OrderStatus.RECEIVED)
+    self.assertEqual(len(self.history(order)), 5)
