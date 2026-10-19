@@ -129,15 +129,15 @@ There is no coupon endpoint. Coupons are managed in the Django admin site at `/a
 
 ## Roles and access
 
-| Area | Anonymous | Customer | Owner | Admin |
-|---|---|---|---|---|
-| Register, login | yes | yes | yes | yes |
-| Browse restaurants and meals | no | yes (visible ones) | yes (own) | no |
-| Create, update, delete restaurants and meals | no | no | own only | via `/api/admin/` |
-| Place orders | no | yes | no | no |
-| View orders | no | own orders | orders of own restaurants | no |
-| Change order status | no | limited (see below) | limited (see below) | no |
-| Manage users, restaurants and meals | no | no | no | yes |
+| Area | Customer | Owner | Admin |
+|---|---|---|---|
+| Register, login | yes | yes | yes |
+| Browse restaurants and meals | yes (visible ones) | yes (own) | no |
+| Create, update, delete restaurants and meals | no | own only | via `/api/admin/` |
+| Place orders | yes | no | no |
+| View orders | own orders | orders of own restaurants | no |
+| Change order status | limited (see below) | limited (see below) | no |
+| Manage users, restaurants and meals | no | no | yes |
 
 Requests without a valid token get **401**. A logged-in user calling an endpoint their role may not use gets **403**.
 
@@ -380,87 +380,15 @@ Every change is saved in `status_history` with the new status, who made it and w
 
 ## Trying the API
 
-Start the server first (`python manage.py runserver`).
+Start the server first - `python manage.py runserver`
 
 ### Postman
 
-A Postman collection with a request for every endpoint is at `<path/to/your-collection.json>`.
+A Postman collection with a request for every endpoint is present in the repository as `food_delivery.postman_collection.json`
 
 1. In Postman, choose **Import** and select the collection file.
 2. Send a login request for the role you want to try (the seed accounts are listed under [Seed data](#seed-data)).
 3. Use the returned `access_token` as the Bearer token on the other requests.
-
-### cURL
-
-```bash
-BASE=http://127.0.0.1:8000/api
-```
-
-Ids such as `<restaurant_id>`, `<meal_id>` and `<order_id>` come from the list and create responses.
-
-**Register a customer**
-
-```bash
-curl -s -X POST $BASE/auth/register/ \
-  -H "Content-Type: application/json" \
-  -d '{"email": "me@example.com", "password": "a-Strong-pass-123", "role": "customer"}'
-```
-
-**Log in** (copy `tokens.access_token` from the response into `TOKEN`)
-
-```bash
-curl -s -X POST $BASE/auth/login/ \
-  -H "Content-Type: application/json" \
-  -d '{"email": "customer1@test.com", "password": "<SEED_USER_PASSWORD>"}'
-
-TOKEN=<access_token>
-```
-
-**Browse restaurants and meals**
-
-```bash
-curl -s $BASE/restaurants/ -H "Authorization: Bearer $TOKEN"
-curl -s $BASE/restaurants/<restaurant_id>/meals/ -H "Authorization: Bearer $TOKEN"
-```
-
-**Place an order with a coupon and a tip**
-
-```bash
-curl -s -X POST $BASE/orders/ \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"restaurant_id": <restaurant_id>, "items": [{"meal_id": <meal_id>, "quantity": 2}], "tip_amount": "2.50", "coupon_code": "WELCOME10"}'
-```
-
-**See your orders**
-
-```bash
-curl -s $BASE/orders/ -H "Authorization: Bearer $TOKEN"
-curl -s $BASE/orders/<order_id>/ -H "Authorization: Bearer $TOKEN"
-```
-
-**Cancel an order as the customer** (only while it is `placed`)
-
-```bash
-curl -s -X POST $BASE/orders/<order_id>/status/ \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"status": "canceled"}'
-```
-
-**Move an order forward as the restaurant owner** (log in as `owner1@test.com` and keep that token in `OWNER_TOKEN`)
-
-```bash
-curl -s -X POST $BASE/orders/<order_id>/status/ \
-  -H "Authorization: Bearer $OWNER_TOKEN" -H "Content-Type: application/json" \
-  -d '{"status": "processing"}'
-```
-
-**Block a restaurant as the administrator** (log in with `ADMIN_EMAIL` and keep that token in `ADMIN_TOKEN`)
-
-```bash
-curl -s -X PATCH $BASE/admin/restaurants/<restaurant_id>/ \
-  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-  -d '{"is_blocked": true}'
-```
 
 ## Design decisions
 
