@@ -630,8 +630,8 @@ class OrderStatusTests(BaseAPITestCase):
     order = self.new_order()
     response = self.change(order, OrderStatus.PROCESSING, Role.OWNER)
     self.assertEqual(response.status_code, 200)
-    response = self.change(order, OrderStatus.PLACED, Role.CUSTOMER)
-    self.assertEqual(response.status_code, 400)
+    response = self.change(order, OrderStatus.CANCELED, Role.CUSTOMER)
+    self.assertEqual(response.status_code, 403)
     order.refresh_from_db()
     self.assertEqual(order.status, OrderStatus.PROCESSING)
 

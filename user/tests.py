@@ -34,8 +34,12 @@ class RegisterTestCase(BaseAPITestCase):
     response = self.client.post("/api/auth/register/", {"email": "c2@test.com", "password": "123", "role": Role.CUSTOMER}, format="json")
     self.assertEqual(response.status_code, 400)
 
-  def test_malformed_json_register(self):
+  def test_missing_password_register(self):
     response = self.client.post("/api/auth/register/", {"email": "c2@test.com", "role": Role.CUSTOMER}, format="json")
+    self.assertEqual(response.status_code, 400)
+
+  def test_malformed_json_register(self):
+    response = self.client.post("/api/auth/register/", "{not json", content_type="application/json")
     self.assertEqual(response.status_code, 400)
 
 class LoginTestCase(BaseAPITestCase):

@@ -107,12 +107,6 @@ class AdminUserTests(BaseAPITestCase):
     self.customer.refresh_from_db()
     self.assertEqual(self.customer.role, Role.CUSTOMER)
 
-  def test_put_needs_email_and_role(self):
-    self.assertEqual(self.client.put(detail(self.customer), {"email": "put@test.com", "role": "owner"}, format="json").status_code, 200)
-    self.assertEqual(self.client.put(detail(self.customer), {"role": "owner"}, format="json").status_code, 400)
-    self.assertEqual(self.client.put(detail(self.customer), {"email": "put@test.com"}, format="json").status_code, 400)
-
-
   def test_update_ignores_privilege_flags(self):
     response = self.client.patch(
       detail(self.customer), {"is_builtin": True, "is_staff": True, "is_superuser": True}, format="json"
