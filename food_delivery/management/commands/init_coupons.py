@@ -22,8 +22,9 @@ class Command(BaseCommand):
   def handle(self, *args, **kwargs):
     expires_at = timezone.now() + timedelta(days=365)
 
+    created = 0
     for code, percent in COUPONS:
-      Coupon.objects.update_or_create(
+      _, was_created = Coupon.objects.update_or_create(
         code=code,
         defaults={
           "discount_percentage": Decimal(percent),
@@ -31,5 +32,7 @@ class Command(BaseCommand):
           "expires_at": expires_at
         }
       )
+      created += was_created
 
-    self.stdout.write(f"SUCCESS {len(COUPONS)} created")
+    refreshed = len(COUPONS) - created
+    self.stdout.write(self.style.SUCCESS(f"Coupons created: {created}, refreshed: {refreshed}"))
