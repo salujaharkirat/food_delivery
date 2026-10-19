@@ -74,7 +74,7 @@ class RestaurantList(RoleMethodMixin, APIView):
     if user.role == Role.CUSTOMER:
       restaurants = get_visible_restaurants()
     elif user.role == Role.OWNER:
-      restaurants = Restaurant.objects.filter(owner=user, is_active=True, is_blocked=False)
+      restaurants = Restaurant.objects.filter(owner=user, is_active=True)
 
     page = paginator.paginate_queryset(restaurants, request)
     return paginator.get_paginated_response(RestaurantSerializer(page, many=True).data)
