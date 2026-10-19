@@ -554,3 +554,50 @@ class PlaceOrderTests(BaseAPITestCase):
     ])
 
     self.assertEqual(response.status_code, 201)
+
+class CustomerOrderViewTests(BaseAPITestCase):
+  def setUp(self):
+    self.owner = self.make_owner()
+    self.restaurant = self.make_restaurant(self.owner)
+    self.meal = self.make_meal(self.restaurant)
+    self.alice = self.make_user("alice@test.com")
+    self.bob = self.make_user("bob@test.com")
+
+    self.alice_first_order = self.make_order(self.alice, self.restaurant, [(self.meal, 1)])
+    self.alice_second_order = self.make_order(self.alice, self.restaurant, [(self.meal, 2)])
+    self.bob_order = self.make_order(self.bob, self.restaurant, [(self.meal, 1)])
+    self.auth_as(self.alice)
+
+  def test_list_shows_only_own_orders_newest_first(self):
+    response = self.client.get(ORDERS)
+
+    self.assertEqual(response.status_code, 200)
+    self.assertEqual(response.data["count"], 2)
+    self.assertEqual([order["id"] for order in response.data["results"]], [self.alice_second_order.pk, self.alice_first_order.pk])
+
+  def test_detail_of_own_order(self):
+    response = self.client.get(f"{ORDERS}{self.alice_second_order.pk}/")
+
+    self.assertEqual(response.status_code, 200)
+    self.assertEqual(response.data["id"], self.alice_second_order.pk)
+    self.assertEqual(response.data["items"][0]["quantity"], 2)
+
+  def test_another_customers_order_is_not_found(self):
+    self.assertEqual(self.client.get(f"{ORDERS}{self.bob_order.pk}/").status_code, 404)
+
+  def test_unknown_order_is_not_found(self):
+    self.assertEqual(self.client.get(f"{ORDERS}999999/").status_code, 404)
+
+  def test_old_orders_survive_deleting_the_restaurant_and_meal(self):
+    self.meal.is_active = False
+    self.meal.save()
+    self.restaurant.is_active = False
+    self.restaurant.save()
+
+    listed = self.client.get(ORDERS)
+    detail = self.client.get(f"{ORDERS}{self.alice_second_order.pk}/")
+
+    self.assertEqual(listed.data["count"], 2)
+    self.assertEqual(detail.status_code, 200)
+    self.assertEqual(detail.data["items"][0]["meal_id"], self.meal.pk)
+    self.assertEqual(detail.data["items"][0]["unit_price"], "10.00")
