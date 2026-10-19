@@ -4,7 +4,7 @@ from django.utils import timezone
 from datetime import timedelta
 
 from config.base_test import BaseAPITestCase, PASSWORD
-from user.models import Role
+from user.models import Role, User
 
 LOGIN = "/api/auth/login/"
 PROTECTED = "/api/restaurants/"
@@ -41,6 +41,50 @@ class RegisterTestCase(BaseAPITestCase):
   def test_malformed_json_register(self):
     response = self.client.post("/api/auth/register/", "{not json", content_type="application/json")
     self.assertEqual(response.status_code, 400)
+
+  def test_duplicate_email_register(self):
+    self.make_user("taken@test.com")
+
+    for email in ("taken@test.com", "TAKEN@test.com", " Taken@Test.com "):
+      with self.subTest(email=email):
+        response = self.client.post("/api/auth/register/", {"email": email, "password": PASSWORD, "role": Role.CUSTOMER}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+
+    self.assertEqual(User.objects.count(), 1)
+
+  def test_invalid_or_missing_email_register(self):
+    for body in ({"email": "not-an-email"}, {"email": ""}, {}):
+      with self.subTest(body=body):
+        response = self.client.post("/api/auth/register/", {**body, "password": PASSWORD, "role": Role.CUSTOMER}, format="json")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("email", response.data)
+
+    self.assertEqual(User.objects.count(), 0)
+
+  def test_missing_role_register(self):
+    response = self.client.post("/api/auth/register/", {"email": "c1@test.com", "password": PASSWORD}, format="json")
+
+    self.assertEqual(response.status_code, 400)
+    self.assertIn("role", response.data)
+    self.assertFalse(User.objects.filter(email="c1@test.com").exists())
+
+
+  def test_password_is_stored_hashed(self):
+    self.client.post("/api/auth/register/", {"email": "c1@test.com", "password": PASSWORD, "role": Role.CUSTOMER}, format="json")
+
+    user = User.objects.get(email="c1@test.com")
+
+    self.assertNotEqual(user.password, PASSWORD)
+    self.assertNotIn(PASSWORD, user.password)
+    self.assertTrue(user.check_password(PASSWORD))
+
+  def test_token_from_register_works(self):
+    response = self.client.post("/api/auth/register/", {"email": "c1@test.com", "password": PASSWORD, "role": Role.CUSTOMER}, format="json")
+
+    self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.data['tokens']['access_token']}")
+
+    self.assertEqual(self.client.get(PROTECTED).status_code, 200)
 
 class LoginTestCase(BaseAPITestCase):
   def setUp(self):
@@ -87,6 +131,17 @@ class LoginTestCase(BaseAPITestCase):
 
     self.assertEqual(response.status_code, 400)
     self.assertEqual(response.data["detail"], "Invalid email or password")
+
+  def test_missing_field_login(self):
+    for field in ("email", "password"):
+      with self.subTest(missing=field):
+        body = {"email": "user@test.com", "password": PASSWORD}
+        del body[field]
+
+        response = self.client.post(LOGIN, body, format="json")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(field, response.data)
 
 class TokenTestCase(BaseAPITestCase):
   def setUp(self):
@@ -136,3 +191,23 @@ class TokenTestCase(BaseAPITestCase):
     self.user.is_blocked = False
     self.user.save()
     self.assertEqual(self.get_with(token).status_code, 200)
+
+def test_deleted_user_with_existing_token_is_rejected(self):
+    token = self.login(self.user)
+    self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+    self.assertEqual(self.client.get(PROTECTED).status_code, 200)
+
+    self.user.is_active = False
+    self.user.save()
+
+    self.assertEqual(self.client.get(PROTECTED).status_code, 401)
+
+def test_blocked_user_with_existing_token_is_rejected(self):
+    token = self.login(self.user)
+    self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+    self.assertEqual(self.client.get(PROTECTED).status_code, 200)
+
+    self.user.is_blocked = False
+    self.user.save()
+
+    self.assertEqual(self.client.get(PROTECTED).status_code, 401)
