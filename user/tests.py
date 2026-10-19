@@ -1,8 +1,13 @@
-from config.base_test import BaseAPITestCase, PASSWORD
 
+from rest_framework_simplejwt.tokens import AccessToken
+from django.utils import timezone
+from datetime import timedelta
+
+from config.base_test import BaseAPITestCase, PASSWORD
 from user.models import Role
 
 LOGIN = "/api/auth/login/"
+PROTECTED = "/api/restaurants/"
 
 class RegisterTestCase(BaseAPITestCase):
   def test_customer_can_register(self):
@@ -35,7 +40,7 @@ class RegisterTestCase(BaseAPITestCase):
 
 class LoginTestCase(BaseAPITestCase):
   def setUp(self):
-    self.user = self.make_user("c1@test.com")
+    self.user = self.make_user("user@test.com")
 
   def post_login(self, email="user@test.com", password=PASSWORD):
     return self.client.post(LOGIN, {"email": email, "password": password}, format="json")
@@ -78,3 +83,52 @@ class LoginTestCase(BaseAPITestCase):
 
     self.assertEqual(response.status_code, 400)
     self.assertEqual(response.data["detail"], "Invalid email or password")
+
+class TokenTestCase(BaseAPITestCase):
+  def setUp(self):
+    self.user = self.make_user("user@test.com")
+
+  def get_with(self, token, scheme="Bearer"):
+    self.client.credentials(HTTP_AUTHORIZATION=f"{scheme} {token}")
+    return self.client.get(PROTECTED)
+
+  def test_no_token_is_rejected(self):
+    self.assertEqual(self.client.get(PROTECTED).status_code, 401)
+
+  def test_garbage_token_is_rejected(self):
+    self.assertEqual(self.get_with("not-a-token").status_code, 401)
+
+  def test_tampered_token_is_rejected(self):
+    token = self.login(self.user)
+    tokens = list(token)
+    tokens[-1] = "^xs"
+    token = "".join(tokens)
+    self.assertEqual(self.get_with(token).status_code, 401)
+
+  def test_expired_token_is_rejected(self):
+    token = AccessToken.for_user(self.user)
+    token.set_exp(from_time=timezone.now() - timedelta(hours=2), lifetime=timedelta(minutes=30))
+
+    self.assertEqual(self.get_with(str(token)).status_code, 401)
+
+  def test_wrong_auth_scheme_is_rejected(self):
+    self.assertEqual(self.get_with(self.login(self.user), scheme="Token").status_code, 401)
+
+  def test_blocked_user_with_existing_token_is_rejected(self):
+    token = self.login(self.user)
+    self.assertEqual(self.get_with(token).status_code, 200)
+
+    self.user.is_blocked = True
+    self.user.save()
+
+    self.assertEqual(self.get_with(token).status_code, 401)
+
+  def test_unblocking_restores_access_for_same_token(self):
+    token = self.login(self.user)
+    self.user.is_blocked = True
+    self.user.save()
+    self.assertEqual(self.get_with(token).status_code, 401)
+
+    self.user.is_blocked = False
+    self.user.save()
+    self.assertEqual(self.get_with(token).status_code, 200)
