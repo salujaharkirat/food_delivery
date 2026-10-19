@@ -16,7 +16,7 @@ class BaseAPITestCase(APITestCase):
 
 
   ################ DATA ###############
-  def make_user(self, email, role = Role.CUSTOMER, **extra):
+  def make_user(self, email="customer@test.com", role = Role.CUSTOMER, **extra):
     return User.objects.create_user(email=email, password=self.password, role=role, **extra)
 
   def make_owner(self, email="owner@test.com", **extra):
